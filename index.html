@@ -150,8 +150,9 @@
 </div>
 
 <script>
-const RPC = 'https://rpc.pulsechain.com';
-const SCAN = 'https://api.scan.pulsechain.com/api';
+const PROXY_BASE = 'https://pulsechain-wallet-proxy.daniel81979.workers.dev/';
+const RPC = `${PROXY_BASE}/rpc`;
+const SCAN = `${PROXY_BASE}/scan`;
 const PAGE_SIZE = 25;
 
 let allInteractions = {};
