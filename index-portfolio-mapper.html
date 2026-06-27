@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PulseChain Wallet Analyzer</title>
+<link rel="icon" href="data:,">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f0f13; color: #e0e0e0; min-height: 100vh; }
+  header { background: #16161e; border-bottom: 1px solid #2a2a3a; padding: 18px 28px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 1.2rem; font-weight: 600; color: #fff; }
+  .pulse-dot { width: 10px; height: 10px; border-radius: 50%; background: #9b59ff; box-shadow: 0 0 8px #9b59ff; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
+
+  .input-card { background: #16161e; border: 1px solid #2a2a3a; border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+  .input-row { display: flex; gap: 10px; }
+  input[type=text] { flex: 1; background: #0f0f13; border: 1px solid #3a3a4a; border-radius: 8px; padding: 12px 16px; color: #fff; font-size: .95rem; outline: none; }
+  input[type=text]:focus { border-color: #9b59ff; }
+  button { background: #9b59ff; color: #fff; border: none; border-radius: 8px; padding: 12px 22px; font-size: .95rem; cursor: pointer; font-weight: 600; transition: background .2s; white-space: nowrap; }
+  button:hover { background: #7d3fe0; }
+  button:disabled { background: #3a3a4a; cursor: not-allowed; }
+  .btn-outline { background: transparent; border: 1px solid #3a3a4a; color: #aaa; }
+  .btn-outline:hover { border-color: #9b59ff; color: #9b59ff; background: transparent; }
+  .btn-sm { padding: 6px 14px; font-size: .82rem; }
+
+  .options-row { display: flex; gap: 16px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: .88rem; color: #aaa; cursor: pointer; }
+  .checkbox-label input { accent-color: #9b59ff; }
+  label { font-size: .88rem; color: #aaa; }
+  select { background: #0f0f13; border: 1px solid #3a3a4a; border-radius: 6px; padding: 6px 10px; color: #e0e0e0; font-size: .88rem; outline: none; }
+  select:focus { border-color: #9b59ff; }
+
+  .status-bar { background: #16161e; border: 1px solid #2a2a3a; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: .88rem; color: #aaa; display: none; align-items: center; gap: 10px; }
+  .status-bar.active { display: flex; }
+  .spinner { width: 16px; height: 16px; border: 2px solid #3a3a4a; border-top-color: #9b59ff; border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .summary-row { display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+  .stat-card { background: #16161e; border: 1px solid #2a2a3a; border-radius: 10px; padding: 14px 20px; flex: 1; min-width: 140px; }
+  .stat-card .val { font-size: 1.5rem; font-weight: 700; color: #9b59ff; }
+  .stat-card .lbl { font-size: .78rem; color: #888; margin-top: 2px; }
+
+  .toolbar { display: flex; gap: 10px; margin-bottom: 14px; align-items: center; flex-wrap: wrap; }
+  .toolbar input[type=text] { max-width: 280px; font-size: .88rem; padding: 8px 12px; }
+  .ml-auto { margin-left: auto; }
+
+  table { width: 100%; border-collapse: collapse; background: #16161e; border-radius: 10px; overflow: hidden; border: 1px solid #2a2a3a; font-size: .88rem; }
+  thead { background: #1e1e2a; }
+  th { padding: 12px 14px; text-align: left; color: #888; font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; cursor: pointer; user-select: none; white-space: nowrap; }
+  th:hover { color: #9b59ff; }
+  td { padding: 10px 14px; border-top: 1px solid #1e1e2a; vertical-align: middle; }
+  tr:hover td { background: #1a1a24; }
+  .addr { font-family: monospace; font-size: .82rem; color: #c8b0ff; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: .75rem; font-weight: 600; }
+  .tag-wallet { background: #1a3a1a; color: #5dba5d; }
+  .tag-contract { background: #3a1a1a; color: #e07070; }
+  .tag-unknown { background: #2a2a1a; color: #c0b060; }
+  .token-list { display: flex; flex-wrap: wrap; gap: 4px; }
+  .token-pill { background: #1e1e32; border: 1px solid #3a3a5a; border-radius: 4px; padding: 2px 7px; font-size: .75rem; color: #b0a0e0; }
+  .copy-btn { background: none; border: none; color: #555; cursor: pointer; padding: 2px 6px; font-size: .8rem; border-radius: 4px; }
+  .copy-btn:hover { color: #9b59ff; background: #2a2a3a; }
+  .empty { text-align: center; padding: 60px 20px; color: #555; }
+  .empty .icon { font-size: 2.5rem; margin-bottom: 10px; }
+
+  .error-msg { background: #2a1a1a; border: 1px solid #5a2a2a; border-radius: 8px; padding: 14px 18px; color: #e07070; font-size: .9rem; margin-bottom: 16px; display: none; }
+  .error-msg.active { display: block; }
+
+  .page-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; justify-content: flex-end; font-size: .88rem; color: #888; }
+  .page-row button { padding: 6px 14px; font-size: .85rem; }
+
+
+  .portfolio-card { background:#16161e; border:1px solid #2a2a3a; border-radius:12px; padding:18px 20px; margin-bottom:24px; }
+  .portfolio-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  .portfolio-head h2 { font-size:1rem; color:#fff; margin-right:auto; }
+  .portfolio-list { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 14px; min-height:34px; }
+  .wallet-pill { display:flex; align-items:center; gap:6px; background:#1e1e32; border:1px solid #3a3a5a; border-radius:999px; padding:6px 9px; font-family:monospace; font-size:.78rem; color:#c8b0ff; }
+  .pill-x { background:transparent; border:0; color:#888; padding:0 3px; font-size:.85rem; cursor:pointer; }
+  .pill-x:hover { color:#e07070; background:transparent; }
+  .portfolio-note { color:#888; font-size:.82rem; line-height:1.35; }
+  .portfolio-results { display:none; margin-bottom:24px; }
+  .portfolio-results.active { display:block; }
+  .section-title { font-size:1rem; color:#fff; margin:18px 0 10px; }
+  .mini-table { margin-top:10px; }
+  .muted { color:#777; }
+  .action-cell { display:flex; gap:6px; justify-content:flex-end; align-items:center; }
+  .scan-link { color:#aaa; text-decoration:none; font-size:.78rem; }
+  .scan-link:hover { color:#9b59ff; }
+
+</style>
+</head>
+<body>
+<header>
+  <div class="pulse-dot"></div>
+  <h1>PulseChain Wallet Interaction Analyzer</h1>
+</header>
+
+<div class="container">
+  <div class="input-card">
+    <div class="input-row">
+      <input type="text" id="addrInput" placeholder="Enter PulseChain wallet address (0x...)" />
+      <button id="analyzeBtn" onclick="analyze()">Analyze</button>
+    </div>
+    <div class="options-row">
+      <label class="checkbox-label"><input type="checkbox" id="filterContracts" checked> Hide contracts</label>
+      <label class="checkbox-label"><input type="checkbox" id="includeTokens" checked> Token transfers</label>
+      <label class="checkbox-label"><input type="checkbox" id="includeNative" checked> Native PLS tx</label>
+      <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+        <label>Max pages:</label>
+        <select id="maxPages">
+          <option value="5">5 (fast)</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+          <option value="100">100 (slow)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+
+
+  <div class="portfolio-card" id="portfolioCard">
+    <div class="portfolio-head">
+      <h2>Portfolio / Wallet Cluster</h2>
+      <button class="btn-outline btn-sm" onclick="addCurrentToPortfolio()">+ Add current wallet</button>
+      <button class="btn-outline btn-sm" onclick="analyzePortfolio()">Analyze Portfolio Map</button>
+      <button class="btn-outline btn-sm" onclick="exportPortfolioCSV()">⬇ Export Map CSV</button>
+      <button class="btn-outline btn-sm" onclick="clearPortfolio()">Clear</button>
+    </div>
+    <div class="portfolio-note">Build a possible same-entity wallet cluster manually. Add wallets as you investigate, then analyze the portfolio to show wallet-to-wallet flows and current combined balances for discovered tokens.</div>
+    <div class="portfolio-list" id="portfolioList"></div>
+  </div>
+
+  <div class="portfolio-results" id="portfolioResults">
+    <div id="portfolioSummary" class="summary-row"></div>
+    <div class="section-title">Internal Portfolio Transfers</div>
+    <table class="mini-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>From</th>
+          <th>To</th>
+          <th>Asset</th>
+          <th>Transfers</th>
+          <th>Amount</th>
+          <th>First Seen</th>
+          <th>Last Seen</th>
+        </tr>
+      </thead>
+      <tbody id="portfolioEdgesBody"></tbody>
+    </table>
+    <div class="section-title">Combined Current Balances</div>
+    <table class="mini-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Asset</th>
+          <th>Combined Balance</th>
+          <th>Wallets Holding</th>
+          <th>Source</th>
+        </tr>
+      </thead>
+      <tbody id="portfolioBalancesBody"></tbody>
+    </table>
+  </div>
+
+
+  <div class="error-msg" id="errorMsg"></div>
+  <div class="status-bar" id="statusBar"><div class="spinner"></div><span id="statusText">Fetching...</span></div>
+
+  <div id="summaryRow" class="summary-row" style="display:none"></div>
+
+  <div id="resultsArea" style="display:none">
+    <div class="toolbar">
+      <input type="text" id="searchBox" placeholder="Filter by address or token..." oninput="renderTable()">
+      <label>Sort:</label>
+      <select id="sortBy" onchange="renderTable()">
+        <option value="interactions">Interactions</option>
+        <option value="lastSeen">Last Seen</option>
+        <option value="firstSeen">First Seen</option>
+        <option value="sent">Sent (PLS)</option>
+        <option value="received">Received (PLS)</option>
+      </select>
+      <div class="ml-auto" style="display:flex;gap:8px;">
+        <button class="btn-outline btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Address</th>
+          <th>Type</th>
+          <th>Interactions</th>
+          <th>Tokens</th>
+          <th>Sent (PLS)</th>
+          <th>Received (PLS)</th>
+          <th>First Seen</th>
+          <th>Last Seen</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div class="page-row">
+      <button class="btn-outline btn-sm" id="prevBtn" onclick="changePage(-1)">← Prev</button>
+      <span id="pageInfo"></span>
+      <button class="btn-outline btn-sm" id="nextBtn" onclick="changePage(1)">Next →</button>
+    </div>
+  </div>
+
+  <div class="empty" id="emptyState">
+    <div class="icon">🔍</div>
+    <div>Enter a PulseChain wallet address to get started</div>
+  </div>
+</div>
+
+<script>
+const PROXY_BASE = 'https://wallet-api-proxy.grumpyschnauzer.workers.dev';
+const RPC = `${PROXY_BASE}/rpc`;
+const SCAN = `${PROXY_BASE}/scan`;
+const PAGE_SIZE = 25;
+
+let allInteractions = {};
+let filteredData = [];
+let currentPage = 0;
+let analyzedAddress = '';
+
+function setStatus(msg) {
+  document.getElementById('statusBar').classList.add('active');
+  document.getElementById('statusText').textContent = msg;
+}
+function hideStatus() { document.getElementById('statusBar').classList.remove('active'); }
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg; el.classList.add('active');
+}
+function hideError() { document.getElementById('errorMsg').classList.remove('active'); }
+
+async function rpc(method, params) {
+  const r = await fetch(RPC, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({jsonrpc:'2.0',id:1,method,params})
+  });
+  const d = await r.json();
+  return d.result;
+}
+
+async function isContract(addr) {
+  try {
+    const code = await rpc('eth_getCode', [addr, 'latest']);
+    return code && code !== '0x' && code !== '0x0';
+  } catch { return null; }
+}
+
+async function fetchTxPage(addr, page, offset=50) {
+  const url = `${SCAN}?module=account&action=txlist&address=${addr}&page=${page}&offset=${offset}&sort=desc`;
+  const r = await fetch(url);
+  const d = await r.json();
+  if (d.status === '1' && Array.isArray(d.result)) return d.result;
+  console.warn('Native tx page skipped:', d.message || d.error || d.upstreamText || d);
+  return [];
+}
+
+async function fetchTokenPage(addr, page, offset=25) {
+  const url = `${SCAN}?module=account&action=tokentx&address=${addr}&page=${page}&offset=${offset}&sort=desc`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const r = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    const d = await r.json();
+
+    if (d.status === '1' && Array.isArray(d.result)) return d.result;
+
+    const msg = String(d.message || d.error || d.upstreamText || '').toLowerCase();
+    const upstreamFailed = d.httpStatus >= 500 || msg.includes('502') || msg.includes('non-json') || msg.includes('upstream') || msg.includes('timed out');
+
+    if (upstreamFailed) {
+      console.warn('tokentx endpoint failed; fallback will be used:', d);
+      return null; // null = API failed; use fallback
+    }
+
+    console.warn('Token page returned no results:', d);
+    return []; // [] = no more token transactions
+  } catch (e) {
+    clearTimeout(timeoutId);
+    console.warn('tokentx request timed out/failed; fallback will be used:', e.message);
+    return null;
+  }
+}
+
+const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+const tokenSymbolCache = {};
+
+function toHexBlock(n) {
+  return '0x' + Math.max(0, n).toString(16);
+}
+
+function topicAddress(addr) {
+  return '0x' + '0'.repeat(24) + addr.toLowerCase().replace(/^0x/, '');
+}
+
+function topicToAddress(topic) {
+  if (!topic || topic.length < 66) return '';
+  return '0x' + topic.slice(-40);
+}
+
+function decodeTokenSymbolResult(hex) {
+  if (!hex || hex === '0x') return '?';
+
+  // bytes32 symbol, common on older tokens
+  if (hex.length === 66) {
+    const bytes = hex.slice(2).match(/.{1,2}/g).map(h => parseInt(h, 16)).filter(n => n > 0);
+    const s = String.fromCharCode(...bytes).trim();
+    return s || '?';
+  }
+
+  // ABI dynamic string symbol()
+  try {
+    const data = hex.slice(2);
+    const len = parseInt(data.slice(64, 128), 16);
+    const strHex = data.slice(128, 128 + len * 2);
+    const bytes = strHex.match(/.{1,2}/g).map(h => parseInt(h, 16));
+    const s = new TextDecoder().decode(new Uint8Array(bytes)).trim();
+    return s || '?';
+  } catch {
+    return '?';
+  }
+}
+
+async function getTokenSymbol(tokenAddress) {
+  const key = tokenAddress.toLowerCase();
+  if (tokenSymbolCache[key]) return tokenSymbolCache[key];
+
+  try {
+    const result = await rpc('eth_call', [{ to: tokenAddress, data: '0x95d89b41' }, 'latest']);
+    const symbol = decodeTokenSymbolResult(result);
+    tokenSymbolCache[key] = symbol || '?';
+    return tokenSymbolCache[key];
+  } catch {
+    tokenSymbolCache[key] = '?';
+    return '?';
+  }
+}
+
+async function fetchTransferLogs(addr, maxPages) {
+  const latestHex = await rpc('eth_blockNumber', []);
+  const latest = parseInt(latestHex, 16);
+
+  // Fallback scan range. Larger = more complete but slower/more likely to be refused by RPC.
+  // 5 pages scans 500k recent blocks, 20+ pages caps at 2m blocks.
+  const blocksToScan = Math.min(2000000, Math.max(100000, maxPages * 100000));
+  const fromBlock = Math.max(0, latest - blocksToScan);
+  const chunkSize = 50000;
+  const addrTopic = topicAddress(addr);
+  const allLogs = [];
+
+  async function scanDirection(directionName, topics) {
+    for (let start = fromBlock; start <= latest; start += chunkSize) {
+      const end = Math.min(latest, start + chunkSize - 1);
+      setStatus(`Fallback token scan ${directionName}: blocks ${start.toLocaleString()}-${end.toLocaleString()}...`);
+
+      try {
+        const logs = await rpc('eth_getLogs', [{
+          fromBlock: toHexBlock(start),
+          toBlock: toHexBlock(end),
+          topics
+        }]);
+
+        if (Array.isArray(logs) && logs.length) allLogs.push(...logs);
+      } catch (e) {
+        console.warn(`Fallback token log scan failed for ${directionName} ${start}-${end}:`, e);
+      }
+
+      await new Promise(r => setTimeout(r, 120));
+    }
+  }
+
+  // Sent: Transfer(from = wallet, to = anyone)
+  await scanDirection('sent', [TRANSFER_TOPIC, addrTopic]);
+
+  // Received: Transfer(from = anyone, to = wallet)
+  await scanDirection('received', [TRANSFER_TOPIC, null, addrTopic]);
+
+  return allLogs;
+}
+
+async function addFallbackTokenInteractions(addr, maxPages) {
+  const logs = await fetchTransferLogs(addr, maxPages);
+  const seen = new Set();
+
+  setStatus(`Processing ${logs.length} fallback token transfers...`);
+
+  for (const log of logs) {
+    if (!log || !log.topics || log.topics.length < 3) continue;
+
+    const uniqueKey = `${log.transactionHash || ''}:${log.logIndex || ''}`;
+    if (seen.has(uniqueKey)) continue;
+    seen.add(uniqueKey);
+
+    const from = topicToAddress(log.topics[1]);
+    const to = topicToAddress(log.topics[2]);
+    if (!from || !to) continue;
+
+    const isFrom = from.toLowerCase() === analyzedAddress;
+    const isTo = to.toLowerCase() === analyzedAddress;
+    if (!isFrom && !isTo) continue;
+
+    const counterparty = isFrom ? to : from;
+    if (!counterparty || counterparty.toLowerCase() === analyzedAddress) continue;
+
+    const symbol = await getTokenSymbol(log.address);
+    const blockNumber = log.blockNumber ? parseInt(log.blockNumber, 16) : 0;
+
+    addInteraction(
+      addr,
+      counterparty,
+      isFrom ? 'token_sent' : 'token_received',
+      symbol,
+      0,
+      0
+    );
+
+    // Keep a block hint internally for future improvements; dates remain blank because logs do not include timestamps.
+    const entry = allInteractions[counterparty.toLowerCase()];
+    if (entry) entry.lastTokenBlock = Math.max(entry.lastTokenBlock || 0, blockNumber);
+  }
+
+  return logs.length;
+}
+
+function addInteraction(addr, otherAddr, type, tokenSymbol, value, timestamp) {
+  if (!otherAddr || otherAddr === '0x0000000000000000000000000000000000000000') return;
+  const key = otherAddr.toLowerCase();
+  if (!allInteractions[key]) {
+    allInteractions[key] = {
+      address: otherAddr, interactions: 0, tokens: new Set(),
+      sentPLS: 0, receivedPLS: 0,
+      firstSeen: timestamp, lastSeen: timestamp,
+      isContract: null, types: new Set()
+    };
+  }
+  const e = allInteractions[key];
+  e.interactions++;
+  e.types.add(type);
+  if (tokenSymbol) e.tokens.add(tokenSymbol);
+  if (timestamp < e.firstSeen) e.firstSeen = timestamp;
+  if (timestamp > e.lastSeen) e.lastSeen = timestamp;
+  if (type === 'sent') e.sentPLS += value;
+  if (type === 'received') e.receivedPLS += value;
+}
+
+async function analyze() {
+  const addr = document.getElementById('addrInput').value.trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+    showError('Please enter a valid Ethereum/PulseChain address (0x...).');
+    return;
+  }
+
+  hideError();
+  analyzedAddress = addr.toLowerCase();
+  allInteractions = {};
+  currentPage = 0;
+
+  document.getElementById('resultsArea').style.display = 'none';
+  document.getElementById('summaryRow').style.display = 'none';
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('analyzeBtn').disabled = true;
+
+  const maxPages = parseInt(document.getElementById('maxPages').value);
+  const doTokens = document.getElementById('includeTokens').checked;
+  const doNative = document.getElementById('includeNative').checked;
+
+  const nativeOffset = 50;
+  const tokenOffset = 25;
+
+  try {
+    if (doNative) {
+      setStatus('Fetching native transactions...');
+
+      for (let p = 1; p <= maxPages; p++) {
+        setStatus(`Fetching native tx page ${p}/${maxPages}...`);
+
+        const nativeTxs = await fetchTxPage(addr, p, nativeOffset);
+        if (!nativeTxs.length) break;
+
+        for (const tx of nativeTxs) {
+          if (!tx.to) continue;
+
+          const val = Number(tx.value || 0) / 1e18;
+          const ts = parseInt(tx.timeStamp || 0);
+          const isFrom = tx.from && tx.from.toLowerCase() === analyzedAddress;
+          const counterparty = isFrom ? tx.to : tx.from;
+          if (!counterparty) continue;
+
+          addInteraction(addr, counterparty, isFrom ? 'sent' : 'received', null, isFrom ? val : 0, ts);
+
+          if (!isFrom && allInteractions[counterparty.toLowerCase()]) {
+            allInteractions[counterparty.toLowerCase()].receivedPLS += val;
+          }
+        }
+
+        if (nativeTxs.length < nativeOffset) break;
+        await new Promise(r => setTimeout(r, 150));
+      }
+    }
+
+    if (doTokens) {
+      setStatus('Fetching token transfers...');
+
+      let tokenApiFailed = false;
+      let tokenRowsAdded = 0;
+
+      for (let p = 1; p <= maxPages; p++) {
+        setStatus(`Fetching token transfers page ${p}/${maxPages}...`);
+
+        const tokenTxs = await fetchTokenPage(addr, p, tokenOffset);
+
+        if (tokenTxs === null) {
+          tokenApiFailed = true;
+          break;
+        }
+
+        if (!tokenTxs.length) break;
+
+        for (const tx of tokenTxs) {
+          if (!tx.to) continue;
+
+          const ts = parseInt(tx.timeStamp || 0);
+          const symbol = tx.tokenSymbol || tx.tokenName || '?';
+          const isFrom = tx.from && tx.from.toLowerCase() === analyzedAddress;
+          const counterparty = isFrom ? tx.to : tx.from;
+          if (!counterparty) continue;
+
+          addInteraction(addr, counterparty, isFrom ? 'token_sent' : 'token_received', symbol, 0, ts);
+          tokenRowsAdded++;
+        }
+
+        if (tokenTxs.length < tokenOffset) break;
+        await new Promise(r => setTimeout(r, 150));
+      }
+
+      if (tokenApiFailed || tokenRowsAdded === 0) {
+        setStatus('Token API failed or returned nothing. Using fallback log scan...');
+        await addFallbackTokenInteractions(addr, maxPages);
+      }
+    }
+
+    const keys = Object.keys(allInteractions);
+    setStatus(`Checking ${keys.length} addresses for contract status...`);
+
+    const batchSize = 10;
+    for (let i = 0; i < keys.length; i += batchSize) {
+      const batch = keys.slice(i, i + batchSize);
+
+      await Promise.all(batch.map(async k => {
+        allInteractions[k].isContract = await isContract(allInteractions[k].address);
+      }));
+
+      setStatus(`Checking contracts ${Math.min(i + batchSize, keys.length)}/${keys.length}...`);
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    hideStatus();
+    buildSummary();
+    renderTable();
+
+    document.getElementById('resultsArea').style.display = 'block';
+    document.getElementById('summaryRow').style.display = 'flex';
+
+  } catch (e) {
+    hideStatus();
+    showError('Error fetching data: ' + e.message);
+  } finally {
+    document.getElementById('analyzeBtn').disabled = false;
+  }
+}
+
+function buildSummary() {
+  const all = Object.values(allInteractions);
+  const wallets = all.filter(x => x.isContract === false);
+  const contracts = all.filter(x => x.isContract === true);
+  const tokens = new Set(all.flatMap(x => [...x.tokens]));
+  document.getElementById('summaryRow').innerHTML = `
+    <div class="stat-card"><div class="val">${all.length}</div><div class="lbl">Total Addresses</div></div>
+    <div class="stat-card"><div class="val">${wallets.length}</div><div class="lbl">Wallets (EOA)</div></div>
+    <div class="stat-card"><div class="val">${contracts.length}</div><div class="lbl">Contracts</div></div>
+    <div class="stat-card"><div class="val">${tokens.size}</div><div class="lbl">Unique Tokens</div></div>
+  `;
+}
+
+function renderTable() {
+  const filterContracts = document.getElementById('filterContracts').checked;
+  const search = document.getElementById('searchBox').value.toLowerCase();
+  const sortBy = document.getElementById('sortBy').value;
+
+  let data = Object.values(allInteractions);
+  if (filterContracts) data = data.filter(x => x.isContract !== true);
+  if (search) data = data.filter(x =>
+    x.address.toLowerCase().includes(search) ||
+    [...x.tokens].some(t => t.toLowerCase().includes(search))
+  );
+
+  data.sort((a, b) => {
+    if (sortBy === 'interactions') return b.interactions - a.interactions;
+    if (sortBy === 'lastSeen') return b.lastSeen - a.lastSeen;
+    if (sortBy === 'firstSeen') return a.firstSeen - b.firstSeen;
+    if (sortBy === 'sent') return b.sentPLS - a.sentPLS;
+    if (sortBy === 'received') return b.receivedPLS - a.receivedPLS;
+    return 0;
+  });
+
+  filteredData = data;
+  const totalPages = Math.ceil(data.length / PAGE_SIZE);
+  if (currentPage >= totalPages) currentPage = Math.max(0, totalPages - 1);
+
+  const page = data.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  const tbody = document.getElementById('tableBody');
+
+  if (!page.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#555;padding:40px">No results</td></tr>';
+  } else {
+    tbody.innerHTML = page.map((e, i) => {
+      const idx = currentPage * PAGE_SIZE + i + 1;
+      const typeTag = e.isContract === true
+        ? '<span class="tag tag-contract">Contract</span>'
+        : e.isContract === false
+        ? '<span class="tag tag-wallet">Wallet</span>'
+        : '<span class="tag tag-unknown">Unknown</span>';
+      const tokens = [...e.tokens].length
+        ? `<div class="token-list">${[...e.tokens].slice(0,6).map(t=>`<span class="token-pill">${escHtml(t)}</span>`).join('')}${e.tokens.size > 6 ? `<span class="token-pill">+${e.tokens.size-6}</span>` : ''}</div>`
+        : '<span style="color:#444">—</span>';
+      const fmt = n => n > 0 ? n.toLocaleString(undefined,{maximumFractionDigits:2}) : '—';
+      const fmtDate = ts => ts ? new Date(ts*1000).toLocaleDateString() : '—';
+      return `<tr>
+        <td style="color:#555">${idx}</td>
+        <td><span class="addr" style="cursor:pointer" onclick="drillInto('${e.address}')" title="Analyze this address">${e.address.slice(0,8)}…${e.address.slice(-6)}</span></td>
+        <td>${typeTag}</td>
+        <td>${e.interactions}</td>
+        <td>${tokens}</td>
+        <td>${fmt(e.sentPLS)}</td>
+        <td>${fmt(e.receivedPLS)}</td>
+        <td style="color:#666;font-size:.8rem">${fmtDate(e.firstSeen)}</td>
+        <td style="color:#666;font-size:.8rem">${fmtDate(e.lastSeen)}</td>
+        <td><div class="action-cell"><button class="copy-btn" onclick="addToPortfolio('${e.address}')" title="Add to portfolio">＋</button><button class="copy-btn" onclick="copyAddr('${e.address}')" title="Copy address">⎘</button><a class="scan-link" href="https://scan.pulsechain.com/address/${e.address}" target="_blank" rel="noopener" title="Open Scan">↗</a></div></td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('pageInfo').textContent = `Page ${currentPage+1} of ${Math.max(1,totalPages)} (${data.length} results)`;
+  document.getElementById('prevBtn').disabled = currentPage === 0;
+  document.getElementById('nextBtn').disabled = currentPage >= totalPages - 1;
+}
+
+function changePage(dir) {
+  currentPage += dir;
+  renderTable();
+}
+
+function copyAddr(addr) {
+  navigator.clipboard.writeText(addr).catch(() => {});
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function exportCSV() {
+  const rows = [['Address','Type','Interactions','Tokens','Sent_PLS','Received_PLS','First_Seen','Last_Seen']];
+  for (const e of filteredData) {
+    const type = e.isContract === true ? 'Contract' : e.isContract === false ? 'Wallet' : 'Unknown';
+    const tokens = [...e.tokens].join(';');
+    const fmtDate = ts => ts ? new Date(ts*1000).toISOString().slice(0,10) : '';
+    rows.push([e.address, type, e.interactions, tokens,
+      e.sentPLS.toFixed(4), e.receivedPLS.toFixed(4),
+      fmtDate(e.firstSeen), fmtDate(e.lastSeen)]);
+  }
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `pulsechain_interactions_${analyzedAddress.slice(0,10)}.csv`;
+  a.click();
+}
+
+
+// ── Portfolio / cluster mapping ───────────────────────────────────────────────
+const PORTFOLIO_KEY = 'pulsechain_wallet_cluster_v1';
+let portfolioWallets = loadPortfolio();
+let portfolioEdges = [];
+let portfolioBalances = [];
+const tokenDecimalsCache = {};
+
+function normalizeAddr(addr) {
+  return String(addr || '').trim().toLowerCase();
+}
+
+function shortAddr(addr) {
+  return addr ? `${addr.slice(0,8)}…${addr.slice(-6)}` : '—';
+}
+
+function loadPortfolio() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PORTFOLIO_KEY) || '[]');
+    return raw.filter(a => /^0x[0-9a-f]{40}$/.test(String(a).toLowerCase()));
+  } catch {
+    return [];
+  }
+}
+
+function savePortfolio() {
+  localStorage.setItem(PORTFOLIO_KEY, JSON.stringify(portfolioWallets));
+}
+
+function addToPortfolio(addr) {
+  const a = normalizeAddr(addr);
+  if (!/^0x[0-9a-f]{40}$/.test(a)) {
+    showError('Cannot add invalid wallet address to portfolio.');
+    return;
+  }
+  hideError();
+  if (!portfolioWallets.includes(a)) {
+    portfolioWallets.push(a);
+    savePortfolio();
+    renderPortfolio();
+  }
+}
+
+function addCurrentToPortfolio() {
+  addToPortfolio(document.getElementById('addrInput').value);
+}
+
+function removeFromPortfolio(addr) {
+  const a = normalizeAddr(addr);
+  portfolioWallets = portfolioWallets.filter(x => x !== a);
+  savePortfolio();
+  renderPortfolio();
+}
+
+function clearPortfolio() {
+  if (!portfolioWallets.length) return;
+  if (!confirm('Clear all wallets from the portfolio cluster?')) return;
+  portfolioWallets = [];
+  portfolioEdges = [];
+  portfolioBalances = [];
+  savePortfolio();
+  renderPortfolio();
+  document.getElementById('portfolioResults').classList.remove('active');
+}
+
+function renderPortfolio() {
+  const el = document.getElementById('portfolioList');
+  if (!el) return;
+  if (!portfolioWallets.length) {
+    el.innerHTML = '<span class="muted">No wallets added yet. Analyze a wallet, then press ＋ beside likely related wallets.</span>';
+    return;
+  }
+  el.innerHTML = portfolioWallets.map(a => `
+    <span class="wallet-pill">
+      <span style="cursor:pointer" onclick="drillInto('${a}')" title="Analyze wallet">${shortAddr(a)}</span>
+      <a class="scan-link" href="https://scan.pulsechain.com/address/${a}" target="_blank" rel="noopener">↗</a>
+      <button class="pill-x" onclick="removeFromPortfolio('${a}')" title="Remove">×</button>
+    </span>
+  `).join('');
+}
+
+function edgeKey(from, to, asset) {
+  return `${normalizeAddr(from)}>${normalizeAddr(to)}>${asset || 'PLS'}`;
+}
+
+function recordPortfolioEdge(edgeMap, from, to, asset, amount, ts, tokenAddress) {
+  const fromN = normalizeAddr(from);
+  const toN = normalizeAddr(to);
+  if (!fromN || !toN || fromN === toN) return;
+  const key = edgeKey(fromN, toN, asset);
+  if (!edgeMap[key]) {
+    edgeMap[key] = {
+      from: fromN,
+      to: toN,
+      asset: asset || 'PLS',
+      tokenAddress: tokenAddress || '',
+      count: 0,
+      amount: 0,
+      firstSeen: ts || 0,
+      lastSeen: ts || 0
+    };
+  }
+  const e = edgeMap[key];
+  e.count++;
+  if (Number.isFinite(amount)) e.amount += amount;
+  if (ts && (!e.firstSeen || ts < e.firstSeen)) e.firstSeen = ts;
+  if (ts && ts > e.lastSeen) e.lastSeen = ts;
+}
+
+function decodeUintResult(hex) {
+  if (!hex || hex === '0x') return 0n;
+  try { return BigInt(hex); } catch { return 0n; }
+}
+
+async function getTokenDecimals(tokenAddress) {
+  const key = normalizeAddr(tokenAddress);
+  if (tokenDecimalsCache[key] !== undefined) return tokenDecimalsCache[key];
+  try {
+    const result = await rpc('eth_call', [{ to: tokenAddress, data: '0x313ce567' }, 'latest']);
+    const n = Number(decodeUintResult(result));
+    tokenDecimalsCache[key] = Number.isFinite(n) ? n : 18;
+  } catch {
+    tokenDecimalsCache[key] = 18;
+  }
+  return tokenDecimalsCache[key];
+}
+
+function balanceOfData(wallet) {
+  return '0x70a08231' + '0'.repeat(24) + normalizeAddr(wallet).replace(/^0x/, '');
+}
+
+function formatBigBalance(raw, decimals) {
+  raw = BigInt(raw || 0);
+  decimals = Number.isFinite(decimals) ? decimals : 18;
+  if (decimals <= 0) return raw.toString();
+  const base = 10n ** BigInt(decimals);
+  const whole = raw / base;
+  const frac = raw % base;
+  let fracStr = frac.toString().padStart(decimals, '0').slice(0, 6).replace(/0+$/, '');
+  const wholeStr = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return fracStr ? `${wholeStr}.${fracStr}` : wholeStr;
+}
+
+function rawToApprox(raw, decimals) {
+  const s = formatBigBalance(raw, decimals).replace(/,/g, '');
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function getPLSBalance(wallet) {
+  try {
+    const hex = await rpc('eth_getBalance', [wallet, 'latest']);
+    return decodeUintResult(hex);
+  } catch { return 0n; }
+}
+
+async function getTokenBalance(tokenAddress, wallet) {
+  try {
+    const hex = await rpc('eth_call', [{ to: tokenAddress, data: balanceOfData(wallet) }, 'latest']);
+    return decodeUintResult(hex);
+  } catch { return 0n; }
+}
+
+function tokenAmountFromTx(tx) {
+  const decimals = parseInt(tx.tokenDecimal || tx.tokenDecimals || '0');
+  const raw = Number(tx.value || 0);
+  if (!Number.isFinite(raw)) return 0;
+  if (!Number.isFinite(decimals) || decimals <= 0) return raw;
+  return raw / Math.pow(10, decimals);
+}
+
+async function scanPortfolioWallet(wallet, walletSet, edgeMap, tokenContracts, maxPages) {
+  const nativeOffset = 50;
+  const tokenOffset = 25;
+
+  for (let p = 1; p <= maxPages; p++) {
+    setStatus(`Portfolio native scan ${shortAddr(wallet)} page ${p}/${maxPages}...`);
+    const txs = await fetchTxPage(wallet, p, nativeOffset);
+    if (!txs.length) break;
+
+    for (const tx of txs) {
+      const from = normalizeAddr(tx.from);
+      const to = normalizeAddr(tx.to);
+      if (!walletSet.has(from) || !walletSet.has(to)) continue;
+      const val = Number(tx.value || 0) / 1e18;
+      const ts = parseInt(tx.timeStamp || 0);
+      recordPortfolioEdge(edgeMap, from, to, 'PLS', val, ts, '');
+    }
+
+    if (txs.length < nativeOffset) break;
+    await new Promise(r => setTimeout(r, 150));
+  }
+
+  let tokenApiFailed = false;
+  for (let p = 1; p <= maxPages; p++) {
+    setStatus(`Portfolio token scan ${shortAddr(wallet)} page ${p}/${maxPages}...`);
+    const txs = await fetchTokenPage(wallet, p, tokenOffset);
+    if (txs === null) { tokenApiFailed = true; break; }
+    if (!txs.length) break;
+
+    for (const tx of txs) {
+      const from = normalizeAddr(tx.from);
+      const to = normalizeAddr(tx.to);
+      const tokenAddress = normalizeAddr(tx.contractAddress || tx.tokenAddress);
+      const symbol = tx.tokenSymbol || tx.tokenName || (tokenAddress ? shortAddr(tokenAddress) : '?');
+      if (tokenAddress) tokenContracts[tokenAddress] = { address: tokenAddress, symbol };
+      if (!walletSet.has(from) || !walletSet.has(to)) continue;
+      const ts = parseInt(tx.timeStamp || 0);
+      recordPortfolioEdge(edgeMap, from, to, symbol, tokenAmountFromTx(tx), ts, tokenAddress);
+    }
+
+    if (txs.length < tokenOffset) break;
+    await new Promise(r => setTimeout(r, 150));
+  }
+
+  if (tokenApiFailed) {
+    setStatus(`Portfolio fallback token logs for ${shortAddr(wallet)}...`);
+    const logs = await fetchTransferLogs(wallet, maxPages);
+    for (const log of logs) {
+      if (!log || !log.topics || log.topics.length < 3) continue;
+      const from = normalizeAddr(topicToAddress(log.topics[1]));
+      const to = normalizeAddr(topicToAddress(log.topics[2]));
+      const tokenAddress = normalizeAddr(log.address);
+      const symbol = await getTokenSymbol(tokenAddress);
+      if (tokenAddress) tokenContracts[tokenAddress] = { address: tokenAddress, symbol };
+      if (!walletSet.has(from) || !walletSet.has(to)) continue;
+      recordPortfolioEdge(edgeMap, from, to, symbol, 0, 0, tokenAddress);
+    }
+  }
+}
+
+async function computePortfolioBalances(walletSet, tokenContracts) {
+  const balances = [];
+  let plsTotal = 0n;
+  let plsHolders = 0;
+
+  for (const wallet of walletSet) {
+    setStatus(`Reading PLS balance ${shortAddr(wallet)}...`);
+    const bal = await getPLSBalance(wallet);
+    if (bal > 0n) plsHolders++;
+    plsTotal += bal;
+  }
+
+  balances.push({ asset: 'PLS', balance: formatBigBalance(plsTotal, 18), holders: plsHolders, source: 'Native balance', approx: rawToApprox(plsTotal, 18) });
+
+  const tokens = Object.values(tokenContracts).slice(0, 40); // safety cap for browser/RPC speed
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    setStatus(`Reading token balances ${i + 1}/${tokens.length}: ${t.symbol}...`);
+    const decimals = await getTokenDecimals(t.address);
+    let total = 0n;
+    let holders = 0;
+    for (const wallet of walletSet) {
+      const bal = await getTokenBalance(t.address, wallet);
+      if (bal > 0n) holders++;
+      total += bal;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    if (total > 0n) {
+      balances.push({ asset: t.symbol || shortAddr(t.address), balance: formatBigBalance(total, decimals), holders, source: shortAddr(t.address), approx: rawToApprox(total, decimals) });
+    }
+  }
+
+  balances.sort((a, b) => b.approx - a.approx);
+  return balances.slice(0, 10);
+}
+
+async function analyzePortfolio() {
+  hideError();
+  if (portfolioWallets.length < 2) {
+    showError('Add at least two wallets to the portfolio before analyzing the portfolio map.');
+    return;
+  }
+
+  const maxPages = parseInt(document.getElementById('maxPages').value);
+  const walletSet = new Set(portfolioWallets.map(normalizeAddr));
+  const edgeMap = {};
+  const tokenContracts = {};
+  document.getElementById('portfolioResults').classList.add('active');
+  document.getElementById('portfolioEdgesBody').innerHTML = '<tr><td colspan="8" style="text-align:center;color:#777;padding:30px">Scanning portfolio...</td></tr>';
+  document.getElementById('portfolioBalancesBody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#777;padding:30px">Waiting for discovered tokens...</td></tr>';
+
+  try {
+    for (const wallet of portfolioWallets) {
+      await scanPortfolioWallet(wallet, walletSet, edgeMap, tokenContracts, maxPages);
+    }
+
+    portfolioEdges = Object.values(edgeMap).sort((a, b) => b.count - a.count || b.amount - a.amount);
+    renderPortfolioEdges();
+
+    portfolioBalances = await computePortfolioBalances(walletSet, tokenContracts);
+    renderPortfolioBalances();
+    renderPortfolioSummary(Object.keys(tokenContracts).length);
+    hideStatus();
+  } catch (e) {
+    hideStatus();
+    showError('Portfolio analysis error: ' + e.message);
+  }
+}
+
+function renderPortfolioSummary(discoveredTokenCount) {
+  const plsMoved = portfolioEdges.filter(e => e.asset === 'PLS').reduce((sum, e) => sum + e.amount, 0);
+  const assets = new Set(portfolioEdges.map(e => e.asset));
+  document.getElementById('portfolioSummary').innerHTML = `
+    <div class="stat-card"><div class="val">${portfolioWallets.length}</div><div class="lbl">Portfolio Wallets</div></div>
+    <div class="stat-card"><div class="val">${portfolioEdges.length}</div><div class="lbl">Internal Links</div></div>
+    <div class="stat-card"><div class="val">${assets.size}</div><div class="lbl">Assets Moved Internally</div></div>
+    <div class="stat-card"><div class="val">${plsMoved.toLocaleString(undefined,{maximumFractionDigits:2})}</div><div class="lbl">PLS Moved Internally</div></div>
+    <div class="stat-card"><div class="val">${discoveredTokenCount}</div><div class="lbl">Discovered Token Contracts</div></div>
+  `;
+}
+
+function renderPortfolioEdges() {
+  const tbody = document.getElementById('portfolioEdgesBody');
+  if (!portfolioEdges.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#777;padding:30px">No wallet-to-wallet transfers found inside this portfolio for the selected scan depth.</td></tr>';
+    return;
+  }
+  const fmt = n => n > 0 ? n.toLocaleString(undefined,{maximumFractionDigits:4}) : '—';
+  const fmtDate = ts => ts ? new Date(ts*1000).toLocaleDateString() : '—';
+  tbody.innerHTML = portfolioEdges.map((e, i) => `
+    <tr>
+      <td style="color:#555">${i + 1}</td>
+      <td><span class="addr" style="cursor:pointer" onclick="drillInto('${e.from}')">${shortAddr(e.from)}</span></td>
+      <td><span class="addr" style="cursor:pointer" onclick="drillInto('${e.to}')">${shortAddr(e.to)}</span></td>
+      <td>${escHtml(e.asset)}</td>
+      <td>${e.count}</td>
+      <td>${fmt(e.amount)}</td>
+      <td style="color:#666;font-size:.8rem">${fmtDate(e.firstSeen)}</td>
+      <td style="color:#666;font-size:.8rem">${fmtDate(e.lastSeen)}</td>
+    </tr>
+  `).join('');
+}
+
+function renderPortfolioBalances() {
+  const tbody = document.getElementById('portfolioBalancesBody');
+  if (!portfolioBalances.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#777;padding:30px">No balances found from discovered token contracts.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = portfolioBalances.map((b, i) => `
+    <tr>
+      <td style="color:#555">${i + 1}</td>
+      <td>${escHtml(b.asset)}</td>
+      <td>${escHtml(b.balance)}</td>
+      <td>${b.holders}</td>
+      <td><span class="muted">${escHtml(b.source)}</span></td>
+    </tr>
+  `).join('');
+}
+
+function exportPortfolioCSV() {
+  if (!portfolioEdges.length) {
+    showError('No portfolio map results to export yet. Click Analyze Portfolio Map first.');
+    return;
+  }
+  const rows = [['From','To','Asset','Transfers','Amount','First_Seen','Last_Seen']];
+  const fmtDate = ts => ts ? new Date(ts*1000).toISOString().slice(0,10) : '';
+  for (const e of portfolioEdges) {
+    rows.push([e.from, e.to, e.asset, e.count, e.amount, fmtDate(e.firstSeen), fmtDate(e.lastSeen)]);
+  }
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `pulsechain_portfolio_map_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ── Breadcrumb history ────────────────────────────────────────────────────────
+let history = [];
+
+function drillInto(addr) {
+  history.push(document.getElementById('addrInput').value.trim());
+  document.getElementById('addrInput').value = addr;
+  renderBreadcrumb();
+  analyze();
+}
+
+function goBack() {
+  const prev = history.pop();
+  if (prev) {
+    document.getElementById('addrInput').value = prev;
+    renderBreadcrumb();
+    analyze();
+  }
+}
+
+function renderBreadcrumb() {
+  let bar = document.getElementById('breadcrumbBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'breadcrumbBar';
+    bar.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:14px;font-size:.82rem;color:#888';
+    document.getElementById('resultsArea').insertAdjacentElement('beforebegin', bar);
+  }
+  if (!history.length) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML = `<button class="btn-outline btn-sm" onclick="goBack()">← Back</button>` +
+    history.map((a,i) => `<span style="color:#9b59ff;font-family:monospace;cursor:pointer" onclick="jumpTo(${i})">${a.slice(0,8)}…${a.slice(-6)}</span><span>›</span>`).join('') +
+    `<span style="color:#fff;font-family:monospace">${document.getElementById('addrInput').value.trim().slice(0,8)}…</span>`;
+}
+
+function jumpTo(idx) {
+  const addr = history[idx];
+  history = history.slice(0, idx);
+  document.getElementById('addrInput').value = addr;
+  renderBreadcrumb();
+  analyze();
+}
+
+document.getElementById('filterContracts').addEventListener('change', renderTable);
+document.getElementById('addrInput').addEventListener('keydown', e => { if(e.key==='Enter') { history=[]; renderBreadcrumb(); analyze(); } });
+renderPortfolio();
+
+window.analyze = analyze;
+window.renderTable = renderTable;
+window.changePage = changePage;
+window.exportCSV = exportCSV;
+window.copyAddr = copyAddr;
+window.drillInto = drillInto;
+window.goBack = goBack;
+window.jumpTo = jumpTo;
+window.addToPortfolio = addToPortfolio;
+window.addCurrentToPortfolio = addCurrentToPortfolio;
+window.removeFromPortfolio = removeFromPortfolio;
+window.clearPortfolio = clearPortfolio;
+window.analyzePortfolio = analyzePortfolio;
+window.exportPortfolioCSV = exportPortfolioCSV;
+</script>
+</body>
+</html>
