@@ -233,11 +233,16 @@ function addInteraction(addr, otherAddr, type, tokenSymbol, value, timestamp) {
 
 async function analyze() {
   const addr = document.getElementById('addrInput').value.trim();
-  if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) { showError('Please enter a valid Ethereum/PulseChain address (0x...).'); return; }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+    showError('Please enter a valid Ethereum/PulseChain address (0x...).');
+    return;
+  }
 
   hideError();
   analyzedAddress = addr.toLowerCase();
   allInteractions = {};
+  currentPage = 0;
+
   document.getElementById('resultsArea').style.display = 'none';
   document.getElementById('summaryRow').style.display = 'none';
   document.getElementById('emptyState').style.display = 'none';
@@ -247,59 +252,117 @@ async function analyze() {
   const doTokens = document.getElementById('includeTokens').checked;
   const doNative = document.getElementById('includeNative').checked;
 
+  const nativeOffset = 50;
+  const tokenOffset = 25;
+
   try {
     if (doNative) {
       setStatus('Fetching native transactions...');
+
       for (let p = 1; p <= maxPages; p++) {
         setStatus(`Fetching native tx page ${p}/${maxPages}...`);
-        const txs = await fetchTxPage(addr, p);
-        const nativeOffset = 50;
-        const txs = await fetchTxPage(addr, p, nativeOffset);
-        if (!txs.length) break;
+
+        const nativeTxs = await fetchTxPage(addr, p, nativeOffset);
+
+        if (!nativeTxs.length) break;
+
+        for (const tx of nativeTxs) {
           if (!tx.to) continue;
-          const val = parseInt(tx.value) / 1e18;
-          const ts = parseInt(tx.timeStamp);
-          const isFrom = tx.from.toLowerCase() === analyzedAddress;
+
+          const val = Number(tx.value || 0) / 1e18;
+          const ts = parseInt(tx.timeStamp || 0);
+          const isFrom = tx.from && tx.from.toLowerCase() === analyzedAddress;
           const counterparty = isFrom ? tx.to : tx.from;
-          addInteraction(addr, counterparty, isFrom ? 'sent' : 'received', null, isFrom ? val : 0, ts);
-          if (!isFrom) allInteractions[counterparty.toLowerCase()].receivedPLS += val;
+
+          if (!counterparty) continue;
+
+          addInteraction(
+            addr,
+            counterparty,
+            isFrom ? 'sent' : 'received',
+            null,
+            isFrom ? val : 0,
+            ts
+          );
+
+          if (!isFrom && allInteractions[counterparty.toLowerCase()]) {
+            allInteractions[counterparty.toLowerCase()].receivedPLS += val;
+          }
         }
-        if (txs.length < nativeOffset) break;
+
+        if (nativeTxs.length < nativeOffset) break;
+
         await new Promise(r => setTimeout(r, 150));
       }
     }
 
     if (doTokens) {
+      setStatus('Fetching token transfers...');
+
       for (let p = 1; p <= maxPages; p++) {
         setStatus(`Fetching token transfers page ${p}/${maxPages}...`);
-        const tokenOffset = 25;
-        const txs = await fetchTokenPage(addr, p, tokenOffset);
-        if (!txs.length) break;
-        for (const tx of txs) {
+
+        const tokenTxs = await fetchTokenPage(addr, p, tokenOffset);
+
+        if (!tokenTxs.length) break;
+
+        for (const tx of tokenTxs) {
           if (!tx.to) continue;
-          const ts = parseInt(tx.timeStamp);
-          const symbol = tx.tokenSymbol || '?';
-          const isFrom = tx.from.toLowerCase() === analyzedAddress;
+
+          const ts = parseInt(tx.timeStamp || 0);
+          const symbol = tx.tokenSymbol || tx.tokenName || '?';
+          const isFrom = tx.from && tx.from.toLowerCase() === analyzedAddress;
           const counterparty = isFrom ? tx.to : tx.from;
-          addInteraction(addr, counterparty, isFrom ? 'token_sent' : 'token_received', symbol, 0, ts);
+
+          if (!counterparty) continue;
+
+          addInteraction(
+            addr,
+            counterparty,
+            isFrom ? 'token_sent' : 'token_received',
+            symbol,
+            0,
+            ts
+          );
         }
-        if (txs.length < tokenOffset) break;
+
+        if (tokenTxs.length < tokenOffset) break;
+
         await new Promise(r => setTimeout(r, 150));
       }
     }
 
-    // Contract detection
     const keys = Object.keys(allInteractions);
     setStatus(`Checking ${keys.length} addresses for contract status...`);
+
     const batchSize = 10;
+
     for (let i = 0; i < keys.length; i += batchSize) {
       const batch = keys.slice(i, i + batchSize);
+
       await Promise.all(batch.map(async k => {
         allInteractions[k].isContract = await isContract(allInteractions[k].address);
       }));
-      if (i % 50 === 0) setStatus(`Checking contracts ${i}/${keys.length}...`);
+
+      setStatus(`Checking contracts ${Math.min(i + batchSize, keys.length)}/${keys.length}...`);
+
       await new Promise(r => setTimeout(r, 100));
     }
+
+    hideStatus();
+    buildSummary();
+    renderTable();
+
+    document.getElementById('resultsArea').style.display = 'block';
+    document.getElementById('summaryRow').style.display = 'flex';
+
+  } catch (e) {
+    hideStatus();
+    showError('Error fetching data: ' + e.message);
+  } finally {
+    document.getElementById('analyzeBtn').disabled = false;
+  }
+}
 
     hideStatus();
     buildSummary();
