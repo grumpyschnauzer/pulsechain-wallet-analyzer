@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PulseChain Wallet Analyzer</title>
+<link rel="icon" href="data:,">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', sans-serif; background: #0f0f13; color: #e0e0e0; min-height: 100vh; }
@@ -90,8 +91,8 @@
       <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
         <label>Max pages:</label>
         <select id="maxPages">
-          <option value="5" selected>5 (fast)</option>
-          <option value="20">20</option>
+          <option value="5">5 (fast)</option>
+          <option value="20" selected>20</option>
           <option value="50">50</option>
           <option value="100">100 (slow)</option>
         </select>
@@ -192,9 +193,7 @@ async function fetchTxPage(addr, page, offset=50) {
   const url = `${SCAN}?module=account&action=txlist&address=${addr}&page=${page}&offset=${offset}&sort=desc`;
   const r = await fetch(url);
   const d = await r.json();
-
   if (d.status === '1' && Array.isArray(d.result)) return d.result;
-
   console.warn('Native tx page skipped:', d.message || d.error || d.upstreamText || d);
   return [];
 }
@@ -206,8 +205,156 @@ async function fetchTokenPage(addr, page, offset=25) {
 
   if (d.status === '1' && Array.isArray(d.result)) return d.result;
 
-  console.warn('Token page skipped:', d.message || d.error || d.upstreamText || d);
-  return [];
+  const msg = String(d.message || d.error || d.upstreamText || '').toLowerCase();
+  const upstreamFailed = d.httpStatus >= 500 || msg.includes('502') || msg.includes('non-json') || msg.includes('upstream');
+
+  if (upstreamFailed) {
+    console.warn('tokentx endpoint failed; fallback will be used:', d);
+    return null; // null = API failed; use fallback
+  }
+
+  console.warn('Token page returned no results:', d);
+  return []; // [] = no more token transactions
+}
+
+const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+const tokenSymbolCache = {};
+
+function toHexBlock(n) {
+  return '0x' + Math.max(0, n).toString(16);
+}
+
+function topicAddress(addr) {
+  return '0x' + '0'.repeat(24) + addr.toLowerCase().replace(/^0x/, '');
+}
+
+function topicToAddress(topic) {
+  if (!topic || topic.length < 66) return '';
+  return '0x' + topic.slice(-40);
+}
+
+function decodeTokenSymbolResult(hex) {
+  if (!hex || hex === '0x') return '?';
+
+  // bytes32 symbol, common on older tokens
+  if (hex.length === 66) {
+    const bytes = hex.slice(2).match(/.{1,2}/g).map(h => parseInt(h, 16)).filter(n => n > 0);
+    const s = String.fromCharCode(...bytes).trim();
+    return s || '?';
+  }
+
+  // ABI dynamic string symbol()
+  try {
+    const data = hex.slice(2);
+    const len = parseInt(data.slice(64, 128), 16);
+    const strHex = data.slice(128, 128 + len * 2);
+    const bytes = strHex.match(/.{1,2}/g).map(h => parseInt(h, 16));
+    const s = new TextDecoder().decode(new Uint8Array(bytes)).trim();
+    return s || '?';
+  } catch {
+    return '?';
+  }
+}
+
+async function getTokenSymbol(tokenAddress) {
+  const key = tokenAddress.toLowerCase();
+  if (tokenSymbolCache[key]) return tokenSymbolCache[key];
+
+  try {
+    const result = await rpc('eth_call', [{ to: tokenAddress, data: '0x95d89b41' }, 'latest']);
+    const symbol = decodeTokenSymbolResult(result);
+    tokenSymbolCache[key] = symbol || '?';
+    return tokenSymbolCache[key];
+  } catch {
+    tokenSymbolCache[key] = '?';
+    return '?';
+  }
+}
+
+async function fetchTransferLogs(addr, maxPages) {
+  const latestHex = await rpc('eth_blockNumber', []);
+  const latest = parseInt(latestHex, 16);
+
+  // Fallback scan range. Larger = more complete but slower/more likely to be refused by RPC.
+  // 5 pages scans 500k recent blocks, 20+ pages caps at 2m blocks.
+  const blocksToScan = Math.min(2000000, Math.max(100000, maxPages * 100000));
+  const fromBlock = Math.max(0, latest - blocksToScan);
+  const chunkSize = 50000;
+  const addrTopic = topicAddress(addr);
+  const allLogs = [];
+
+  async function scanDirection(directionName, topics) {
+    for (let start = fromBlock; start <= latest; start += chunkSize) {
+      const end = Math.min(latest, start + chunkSize - 1);
+      setStatus(`Fallback token scan ${directionName}: blocks ${start.toLocaleString()}-${end.toLocaleString()}...`);
+
+      try {
+        const logs = await rpc('eth_getLogs', [{
+          fromBlock: toHexBlock(start),
+          toBlock: toHexBlock(end),
+          topics
+        }]);
+
+        if (Array.isArray(logs) && logs.length) allLogs.push(...logs);
+      } catch (e) {
+        console.warn(`Fallback token log scan failed for ${directionName} ${start}-${end}:`, e);
+      }
+
+      await new Promise(r => setTimeout(r, 120));
+    }
+  }
+
+  // Sent: Transfer(from = wallet, to = anyone)
+  await scanDirection('sent', [TRANSFER_TOPIC, addrTopic]);
+
+  // Received: Transfer(from = anyone, to = wallet)
+  await scanDirection('received', [TRANSFER_TOPIC, null, addrTopic]);
+
+  return allLogs;
+}
+
+async function addFallbackTokenInteractions(addr, maxPages) {
+  const logs = await fetchTransferLogs(addr, maxPages);
+  const seen = new Set();
+
+  setStatus(`Processing ${logs.length} fallback token transfers...`);
+
+  for (const log of logs) {
+    if (!log || !log.topics || log.topics.length < 3) continue;
+
+    const uniqueKey = `${log.transactionHash || ''}:${log.logIndex || ''}`;
+    if (seen.has(uniqueKey)) continue;
+    seen.add(uniqueKey);
+
+    const from = topicToAddress(log.topics[1]);
+    const to = topicToAddress(log.topics[2]);
+    if (!from || !to) continue;
+
+    const isFrom = from.toLowerCase() === analyzedAddress;
+    const isTo = to.toLowerCase() === analyzedAddress;
+    if (!isFrom && !isTo) continue;
+
+    const counterparty = isFrom ? to : from;
+    if (!counterparty || counterparty.toLowerCase() === analyzedAddress) continue;
+
+    const symbol = await getTokenSymbol(log.address);
+    const blockNumber = log.blockNumber ? parseInt(log.blockNumber, 16) : 0;
+
+    addInteraction(
+      addr,
+      counterparty,
+      isFrom ? 'token_sent' : 'token_received',
+      symbol,
+      0,
+      0
+    );
+
+    // Keep a block hint internally for future improvements; dates remain blank because logs do not include timestamps.
+    const entry = allInteractions[counterparty.toLowerCase()];
+    if (entry) entry.lastTokenBlock = Math.max(entry.lastTokenBlock || 0, blockNumber);
+  }
+
+  return logs.length;
 }
 
 function addInteraction(addr, otherAddr, type, tokenSymbol, value, timestamp) {
@@ -263,7 +410,6 @@ async function analyze() {
         setStatus(`Fetching native tx page ${p}/${maxPages}...`);
 
         const nativeTxs = await fetchTxPage(addr, p, nativeOffset);
-
         if (!nativeTxs.length) break;
 
         for (const tx of nativeTxs) {
@@ -273,17 +419,9 @@ async function analyze() {
           const ts = parseInt(tx.timeStamp || 0);
           const isFrom = tx.from && tx.from.toLowerCase() === analyzedAddress;
           const counterparty = isFrom ? tx.to : tx.from;
-
           if (!counterparty) continue;
 
-          addInteraction(
-            addr,
-            counterparty,
-            isFrom ? 'sent' : 'received',
-            null,
-            isFrom ? val : 0,
-            ts
-          );
+          addInteraction(addr, counterparty, isFrom ? 'sent' : 'received', null, isFrom ? val : 0, ts);
 
           if (!isFrom && allInteractions[counterparty.toLowerCase()]) {
             allInteractions[counterparty.toLowerCase()].receivedPLS += val;
@@ -291,7 +429,6 @@ async function analyze() {
         }
 
         if (nativeTxs.length < nativeOffset) break;
-
         await new Promise(r => setTimeout(r, 150));
       }
     }
@@ -299,10 +436,18 @@ async function analyze() {
     if (doTokens) {
       setStatus('Fetching token transfers...');
 
+      let tokenApiFailed = false;
+      let tokenRowsAdded = 0;
+
       for (let p = 1; p <= maxPages; p++) {
         setStatus(`Fetching token transfers page ${p}/${maxPages}...`);
 
         const tokenTxs = await fetchTokenPage(addr, p, tokenOffset);
+
+        if (tokenTxs === null) {
+          tokenApiFailed = true;
+          break;
+        }
 
         if (!tokenTxs.length) break;
 
@@ -313,22 +458,19 @@ async function analyze() {
           const symbol = tx.tokenSymbol || tx.tokenName || '?';
           const isFrom = tx.from && tx.from.toLowerCase() === analyzedAddress;
           const counterparty = isFrom ? tx.to : tx.from;
-
           if (!counterparty) continue;
 
-          addInteraction(
-            addr,
-            counterparty,
-            isFrom ? 'token_sent' : 'token_received',
-            symbol,
-            0,
-            ts
-          );
+          addInteraction(addr, counterparty, isFrom ? 'token_sent' : 'token_received', symbol, 0, ts);
+          tokenRowsAdded++;
         }
 
         if (tokenTxs.length < tokenOffset) break;
-
         await new Promise(r => setTimeout(r, 150));
+      }
+
+      if (tokenApiFailed || tokenRowsAdded === 0) {
+        setStatus('Token API failed or returned nothing. Using fallback log scan...');
+        await addFallbackTokenInteractions(addr, maxPages);
       }
     }
 
@@ -336,7 +478,6 @@ async function analyze() {
     setStatus(`Checking ${keys.length} addresses for contract status...`);
 
     const batchSize = 10;
-
     for (let i = 0; i < keys.length; i += batchSize) {
       const batch = keys.slice(i, i + batchSize);
 
@@ -345,7 +486,6 @@ async function analyze() {
       }));
 
       setStatus(`Checking contracts ${Math.min(i + batchSize, keys.length)}/${keys.length}...`);
-
       await new Promise(r => setTimeout(r, 100));
     }
 
@@ -356,7 +496,7 @@ async function analyze() {
     document.getElementById('resultsArea').style.display = 'block';
     document.getElementById('summaryRow').style.display = 'flex';
 
-    } catch (e) {
+  } catch (e) {
     hideStatus();
     showError('Error fetching data: ' + e.message);
   } finally {
@@ -422,7 +562,7 @@ function renderTable() {
       const fmtDate = ts => ts ? new Date(ts*1000).toLocaleDateString() : '—';
       return `<tr>
         <td style="color:#555">${idx}</td>
-        <td><span class="addr">${e.address.slice(0,8)}…${e.address.slice(-6)}</span></td>
+        <td><span class="addr" style="cursor:pointer" onclick="drillInto('${e.address}')" title="Analyze this address">${e.address.slice(0,8)}…${e.address.slice(-6)}</span></td>
         <td>${typeTag}</td>
         <td>${e.interactions}</td>
         <td>${tokens}</td>
@@ -515,16 +655,6 @@ function jumpTo(idx) {
 
 document.getElementById('filterContracts').addEventListener('change', renderTable);
 document.getElementById('addrInput').addEventListener('keydown', e => { if(e.key==='Enter') { history=[]; renderBreadcrumb(); analyze(); } });
-
-window.analyze = analyze;
-window.renderTable = renderTable;
-window.changePage = changePage;
-window.exportCSV = exportCSV;
-window.copyAddr = copyAddr;
-window.drillInto = drillInto;
-window.goBack = goBack;
-window.jumpTo = jumpTo;
- 
 </script>
 </body>
 </html>
